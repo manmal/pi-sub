@@ -102,7 +102,7 @@ The extension loads automatically. Use:
 Shortcuts are configurable via `sub-bar:settings` → Keybindings. Enter any valid key combo (e.g. `ctrl+alt+p`, `ctrl+shift+s`) or `none` to disable a shortcut. Keybinding changes take effect after pi restart.
 
 **Caching:**
-- Handled by sub-core at `~/.pi/agent/cache/sub-core/cache.json`
+- Handled by sub-core at `cache/sub-core/cache.json` in your active agent directory (default: `~/.pi/agent/cache/sub-core/cache.json`)
 - Cache TTL matches your auto-refresh interval setting
 - Lock file prevents race conditions between multiple pi windows
 
@@ -114,7 +114,7 @@ Shortcuts are configurable via `sub-bar:settings` → Keybindings. Enter any val
 
 ## Settings
 
-Display and provider UI settings are stored in `~/.pi/agent/pi-sub-bar-settings.json` (migrated from the legacy extension `settings.json` when present; the legacy file is removed after a successful migration). Core settings are managed by sub-core, and the sub-bar settings menu includes a shortcut that points you to `sub-core:settings` for additional options.
+Display and provider UI settings are stored in `pi-sub-bar-settings.json` in your active agent directory (default: `~/.pi/agent/pi-sub-bar-settings.json`) (migrated from the legacy extension `settings.json` when present; the legacy file is removed after a successful migration). Core settings are managed by sub-core, and the sub-bar settings menu includes a shortcut that points you to `sub-core:settings` for additional options.
 
 **Settings migrations:** settings are merged with defaults on load, but renames/removals are not migrated automatically. When adding new settings or changing schema, update the defaults/merge logic and provide a migration (or instruct users to reset `pi-sub-bar-settings.json`).
 
@@ -136,7 +136,7 @@ Display Settings cover layout, bars, labels/text, reset timers, status indicator
 
 Credentials are loaded by sub-core from:
 
-- `~/.pi/agent/auth.json` - pi's auth file
+- `auth.json` in your active agent directory (default: `~/.pi/agent/auth.json`) - pi's auth file
 - Provider-specific locations (e.g., `~/.codex/auth.json`, `~/.gemini/oauth_creds.json`)
 - macOS Keychain for Claude Code credentials
 - Environment variables (e.g., `Z_AI_API_KEY`)

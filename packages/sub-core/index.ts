@@ -321,7 +321,7 @@ export default function createExtension(pi: ExtensionAPI, deps: Dependencies = c
 		if (force) {
 			return fetchUsageEntries(deps, settings, enabledProviders, { force: true });
 		}
-		return getCachedUsageEntries(enabledProviders, settings);
+		return getCachedUsageEntries(enabledProviders, settings, deps);
 	}
 
 	const registerUsageTool = (name: ToolName): void => {

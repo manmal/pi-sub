@@ -67,11 +67,11 @@ Use `sub-core:settings` to configure shared provider settings plus **Usage Refre
 
 Usage refresh controls cache/usage updates, while status refresh controls incident polling (you can keep status on a slower interval). The Minimum Refresh Interval caps how often refresh triggers can fetch new data even if you refresh every turn.
 
-Antigravity usage requires an OAuth token in `~/.pi/agent/auth.json` under the `google-antigravity` key.
+Antigravity usage requires an OAuth token in `auth.json` in your active agent directory (default: `~/.pi/agent/auth.json`) under the `google-antigravity` key.
 
 Anthropic extra usage formatting is controlled in Provider Settings (currency symbol + decimal separator).
 
-Settings are stored in `~/.pi/agent/pi-sub-core-settings.json` (migrated from the legacy extension `settings.json` when present; the legacy file is removed after a successful migration).
+Settings are stored in `pi-sub-core-settings.json` in your active agent directory (default: `~/.pi/agent/pi-sub-core-settings.json`) (migrated from the legacy extension `settings.json` when present; the legacy file is removed after a successful migration).
 
 **Settings migrations:** settings are merged with defaults on load, but renames/removals are not migrated automatically. When adding new settings or changing schema, update the defaults/merge logic and provide a migration (or instruct users to reset `pi-sub-core-settings.json`).
 
@@ -79,14 +79,14 @@ Settings are stored in `~/.pi/agent/pi-sub-core-settings.json` (migrated from th
 
 Sub-core stores a shared cache and lock file:
 
-- `~/.pi/agent/cache/sub-core/cache.json`
-- `~/.pi/agent/cache/sub-core/cache.lock`
+- `cache/sub-core/cache.json` in your active agent directory (default: `~/.pi/agent/cache/sub-core/cache.json`)
+- `cache/sub-core/cache.lock` in your active agent directory (default: `~/.pi/agent/cache/sub-core/cache.lock`)
 
 Legacy cache files next to the extension entry or in the agent root are migrated to the cache directory and removed on first run.
 
 ## Security notes
 
-- Keep `~/.pi/agent/auth.json` readable only by your user (e.g. `chmod 600 ~/.pi/agent/auth.json`).
+- Keep `auth.json` in your active agent directory readable only by your user (e.g. `chmod 600 ~/.pi/agent/auth.json`).
 - Avoid logging token-bearing headers or auth config when troubleshooting provider calls.
 
 ## Provider comparison

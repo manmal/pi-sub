@@ -50,6 +50,10 @@ export function getSettingsPath(): string {
 	return join(getAgentDir(), SETTINGS_FILE_NAME);
 }
 
+export function getAuthPath(): string {
+	return join(getAgentDir(), "auth.json");
+}
+
 export function getLegacySettingsPath(): string {
 	return join(getExtensionDir(), "settings.json");
 }

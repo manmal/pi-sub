@@ -2,12 +2,12 @@
  * OpenAI Codex usage provider
  */
 
-import * as path from "node:path";
 import type { Dependencies, RateWindow, UsageSnapshot } from "../../types.js";
 import { BaseProvider } from "../../provider.js";
 import { noCredentials, fetchFailed, httpError } from "../../errors.js";
 import { formatReset, createTimeoutController } from "../../utils.js";
 import { API_TIMEOUT_MS } from "../../config.js";
+import { loadCodexCredentials } from "./codex-auth.js";
 
 interface CodexRateWindow {
 	reset_at?: number;
@@ -24,61 +24,6 @@ interface CodexAdditionalRateLimit {
 	limit_name?: string;
 	metered_feature?: string;
 	rate_limit?: CodexRateLimit;
-}
-
-/**
- * Load Codex credentials from auth.json
- * First tries pi's auth.json, then falls back to legacy codex location
- */
-function loadCodexCredentials(deps: Dependencies): { accessToken?: string; accountId?: string } {
-	// Explicit override via env var
-	const envAccessToken = (
-		deps.env.OPENAI_CODEX_OAUTH_TOKEN ||
-		deps.env.OPENAI_CODEX_ACCESS_TOKEN ||
-		deps.env.CODEX_OAUTH_TOKEN ||
-		deps.env.CODEX_ACCESS_TOKEN
-	)?.trim();
-	const envAccountId = (deps.env.OPENAI_CODEX_ACCOUNT_ID || deps.env.CHATGPT_ACCOUNT_ID)?.trim();
-	if (envAccessToken) {
-		return { accessToken: envAccessToken, accountId: envAccountId || undefined };
-	}
-
-	// Try pi's auth.json first
-	const piAuthPath = path.join(deps.homedir(), ".pi", "agent", "auth.json");
-	try {
-		if (deps.fileExists(piAuthPath)) {
-			const data = JSON.parse(deps.readFile(piAuthPath) ?? "{}");
-			if (data["openai-codex"]?.access) {
-				return {
-					accessToken: data["openai-codex"].access,
-					accountId: data["openai-codex"].accountId,
-				};
-			}
-		}
-	} catch {
-		// Ignore parse errors, try legacy location
-	}
-
-	// Fall back to legacy codex location
-	const codexHome = deps.env.CODEX_HOME || path.join(deps.homedir(), ".codex");
-	const authPath = path.join(codexHome, "auth.json");
-	try {
-		if (deps.fileExists(authPath)) {
-			const data = JSON.parse(deps.readFile(authPath) ?? "{}");
-			if (data.OPENAI_API_KEY) {
-				return { accessToken: data.OPENAI_API_KEY };
-			} else if (data.tokens?.access_token) {
-				return {
-					accessToken: data.tokens.access_token,
-					accountId: data.tokens.account_id,
-				};
-			}
-		}
-	} catch {
-		// Ignore parse errors
-	}
-
-	return {};
 }
 
 function getWindowLabel(windowSeconds?: number, fallbackWindowSeconds?: number): string {

@@ -21,9 +21,13 @@ export function createDeps(options?: {
 	execFileSync?: Dependencies["execFileSync"];
 	env?: NodeJS.ProcessEnv;
 	homedir?: string;
+	authPath?: string;
 }): { deps: Dependencies; files: Map<string, string> } {
 	const files = new Map<string, string>(Object.entries(options?.files ?? {}));
 	const homedir = options?.homedir ?? "/home/test";
+	const env = options?.env ?? {};
+	const defaultAgentDir = env.PI_CODING_AGENT_DIR ?? path.join(homedir, ".pi", "agent");
+	const authPath = options?.authPath ?? path.join(defaultAgentDir, "auth.json");
 
 	const deps: Dependencies = {
 		fetch: options?.fetch
@@ -37,12 +41,9 @@ export function createDeps(options?: {
 				throw new Error("execFileSync not mocked");
 			}),
 		homedir: () => homedir,
-		env: options?.env ?? {},
+		getAuthPath: () => authPath,
+		env,
 	};
 
 	return { deps, files };
-}
-
-export function getAuthPath(home: string): string {
-	return path.join(home, ".pi", "agent", "auth.json");
 }

@@ -2,7 +2,6 @@
  * z.ai usage provider
  */
 
-import * as path from "node:path";
 import type { Dependencies, RateWindow, UsageSnapshot } from "../../types.js";
 import { BaseProvider } from "../../provider.js";
 import { noCredentials, fetchFailed, httpError, apiError } from "../../errors.js";
@@ -22,7 +21,7 @@ function loadZaiApiKey(deps: Dependencies): string | undefined {
 	}
 
 	// Try pi auth.json
-	const authPath = path.join(deps.homedir(), ".pi", "agent", "auth.json");
+	const authPath = deps.getAuthPath();
 	try {
 		if (deps.fileExists(authPath)) {
 			const auth = JSON.parse(deps.readFile(authPath) ?? "{}");

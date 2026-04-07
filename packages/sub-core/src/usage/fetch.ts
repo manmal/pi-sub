@@ -6,9 +6,17 @@ import type { Dependencies, ProviderName, ProviderStatus, UsageSnapshot } from "
 import type { Settings } from "../settings-types.js";
 import type { ProviderUsageEntry } from "./types.js";
 import { createProvider } from "../providers/registry.js";
-import { fetchWithCache, getCachedData, readCache, updateCacheStatus, type Cache } from "../cache.js";
+import {
+	fetchWithCache,
+	getCachedData,
+	matchesExpectedCacheKey,
+	readCache,
+	updateCacheStatus,
+	type Cache,
+} from "../cache.js";
 import { fetchProviderStatusWithFallback, providerHasStatus } from "../providers/status.js";
 import { hasProviderCredentials } from "../providers/registry.js";
+import { getProviderCacheKey } from "../providers/cache-key.js";
 import { isExpectedMissingData } from "../errors.js";
 
 export function getCacheTtlMs(settings: Settings): number {
@@ -93,15 +101,17 @@ export async function refreshStatusForProvider(
 		return undefined;
 	}
 
+	const cacheKey = getProviderCacheKey(provider, deps);
 	const cache = readCache();
-	const entry = cache[provider];
+	const entryRaw = cache[provider];
+	const entry = matchesExpectedCacheKey(entryRaw, cacheKey) ? entryRaw : undefined;
 	const providerInstance = createProvider(provider);
 	const shouldFetch = providerHasStatus(provider, providerInstance) && shouldRefreshStatus(settings, entry, options);
 	if (!shouldFetch) {
 		return entry?.status;
 	}
 	const status = await fetchProviderStatusWithFallback(provider, providerInstance, deps);
-	await updateCacheStatus(provider, status, { statusFetchedAt: Date.now() });
+	await updateCacheStatus(provider, status, { statusFetchedAt: Date.now(), cacheKey });
 	return status;
 }
 
@@ -119,9 +129,11 @@ export async function fetchUsageForProvider(
 		return {};
 	}
 
+	const cacheKey = getProviderCacheKey(provider, deps);
 	const ttlMs = getCacheTtlMs(settings);
 	const cache = readCache();
-	const cachedEntry = cache[provider];
+	const entry = cache[provider];
+	const cachedEntry = matchesExpectedCacheKey(entry, cacheKey) ? entry : undefined;
 	const cachedStatus = cachedEntry?.status;
 	const minIntervalMs = getMinRefreshIntervalMs(settings);
 	if (cachedEntry?.usage && isWithinMinInterval(cachedEntry.fetchedAt, minIntervalMs)) {
@@ -134,7 +146,7 @@ export async function fetchUsageForProvider(
 		&& providerHasStatus(provider, providerInstance);
 
 	if (!options?.force) {
-		const cachedUsage = await getCachedData(provider, ttlMs, cache);
+		const cachedUsage = await getCachedData(provider, ttlMs, cache, cacheKey);
 		if (cachedUsage) {
 			let status = cachedUsage.status;
 			if (shouldFetchStatus) {
@@ -161,17 +173,19 @@ export async function fetchUsageForProvider(
 
 			return { usage, status, statusFetchedAt };
 		},
-		options,
+		{ force: options?.force, cacheKey },
 	);
 }
 
 export async function getCachedUsageEntry(
 	provider: ProviderName,
 	settings: Settings,
+	deps: Dependencies,
 	cacheSnapshot?: Cache
 ): Promise<ProviderUsageEntry | undefined> {
 	const ttlMs = getCacheTtlMs(settings);
-	const cachedEntry = await getCachedData(provider, ttlMs, cacheSnapshot);
+	const cacheKey = getProviderCacheKey(provider, deps);
+	const cachedEntry = await getCachedData(provider, ttlMs, cacheSnapshot, cacheKey);
 	const usage = cachedEntry?.usage ? { ...cachedEntry.usage, status: cachedEntry.status } : undefined;
 	if (!usage || (usage.error && isExpectedMissingData(usage.error))) {
 		return undefined;
@@ -181,12 +195,13 @@ export async function getCachedUsageEntry(
 
 export async function getCachedUsageEntries(
 	providers: ProviderName[],
-	settings: Settings
+	settings: Settings,
+	deps: Dependencies
 ): Promise<ProviderUsageEntry[]> {
 	const cache = readCache();
 	const entries: ProviderUsageEntry[] = [];
 	for (const provider of providers) {
-		const entry = await getCachedUsageEntry(provider, settings, cache);
+		const entry = await getCachedUsageEntry(provider, settings, deps, cache);
 		if (entry) {
 			entries.push(entry);
 		}

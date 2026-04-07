@@ -26,6 +26,7 @@ export interface CacheEntry {
 	statusFetchedAt?: number;
 	usage?: UsageSnapshot;
 	status?: ProviderStatus;
+	cacheKey?: string;
 }
 
 /**
@@ -315,10 +316,17 @@ export function watchCacheUpdates(options?: CacheWatchOptions): () => void {
  * Wait for lock to be released and re-check cache
  * Returns the cache entry if it became fresh while waiting
  */
+export function matchesExpectedCacheKey(entry: CacheEntry | undefined, expectedCacheKey?: string): boolean {
+	if (!entry) return false;
+	if (!expectedCacheKey) return true;
+	return entry.cacheKey === expectedCacheKey;
+}
+
 async function waitForLockAndRecheck(
 	provider: ProviderName,
 	ttlMs: number,
-	maxWaitMs: number = 3000
+	maxWaitMs: number = 3000,
+	expectedCacheKey?: string
 ): Promise<CacheEntry | null> {
 	const released = await waitForLockRelease(LOCK_PATH, maxWaitMs);
 	if (!released) {
@@ -327,10 +335,13 @@ async function waitForLockAndRecheck(
 
 	const cache = readCache();
 	const entry = cache[provider];
-	if (entry && entry.usage?.error && !isExpectedMissingData(entry.usage.error)) {
+	if (!matchesExpectedCacheKey(entry, expectedCacheKey)) {
 		return null;
 	}
-	if (entry && Date.now() - entry.fetchedAt < ttlMs) {
+	if (entry.usage?.error && !isExpectedMissingData(entry.usage.error)) {
+		return null;
+	}
+	if (Date.now() - entry.fetchedAt < ttlMs) {
 		return entry;
 	}
 	return null;
@@ -342,12 +353,13 @@ async function waitForLockAndRecheck(
 export async function getCachedData(
 	provider: ProviderName,
 	ttlMs: number,
-	cacheSnapshot?: Cache
+	cacheSnapshot?: Cache,
+	expectedCacheKey?: string
 ): Promise<CacheEntry | null> {
 	const cache = cacheSnapshot ?? readCache();
 	const entry = cache[provider];
 
-	if (!entry) {
+	if (!matchesExpectedCacheKey(entry, expectedCacheKey)) {
 		return null;
 	}
 
@@ -371,13 +383,13 @@ export async function fetchWithCache<T extends { usage?: UsageSnapshot; status?:
 	provider: ProviderName,
 	ttlMs: number,
 	fetchFn: () => Promise<T>,
-	options?: { force?: boolean }
+	options?: { force?: boolean; cacheKey?: string }
 ): Promise<T> {
 	const forceRefresh = options?.force === true;
 
 	if (!forceRefresh) {
 		// Check cache first
-		const cached = await getCachedData(provider, ttlMs);
+		const cached = await getCachedData(provider, ttlMs, undefined, options?.cacheKey);
 		if (cached) {
 			return { usage: cached.usage, status: cached.status } as T;
 		}
@@ -388,7 +400,7 @@ export async function fetchWithCache<T extends { usage?: UsageSnapshot; status?:
 	
 	if (!lockAcquired) {
 		// Another process is fetching, wait and re-check cache
-		const freshEntry = await waitForLockAndRecheck(provider, ttlMs);
+		const freshEntry = await waitForLockAndRecheck(provider, ttlMs, 3000, options?.cacheKey);
 		if (freshEntry) {
 			return { usage: freshEntry.usage, status: freshEntry.status } as T;
 		}
@@ -416,6 +428,7 @@ export async function fetchWithCache<T extends { usage?: UsageSnapshot; status?:
 				statusFetchedAt,
 				usage: result.usage,
 				status: result.status,
+				cacheKey: options?.cacheKey,
 			};
 			writeCache(cache);
 			emitCacheUpdate(provider, cache[provider]);
@@ -441,7 +454,7 @@ export async function fetchWithCache<T extends { usage?: UsageSnapshot; status?:
 export async function updateCacheStatus(
 	provider: ProviderName,
 	status: ProviderStatus,
-	options?: { statusFetchedAt?: number }
+	options?: { statusFetchedAt?: number; cacheKey?: string }
 ): Promise<void> {
 	const lockAcquired = tryAcquireFileLock(LOCK_PATH, LOCK_TIMEOUT_MS);
 	if (!lockAcquired) {
@@ -450,12 +463,16 @@ export async function updateCacheStatus(
 	try {
 		const cache = readCache();
 		const entry = cache[provider];
+		const matchingEntry = options?.cacheKey && !matchesExpectedCacheKey(entry, options.cacheKey)
+			? undefined
+			: entry;
 		const statusFetchedAt = options?.statusFetchedAt ?? Date.now();
 		cache[provider] = {
-			fetchedAt: entry?.fetchedAt ?? 0,
+			fetchedAt: matchingEntry?.fetchedAt ?? 0,
 			statusFetchedAt,
-			usage: entry?.usage,
+			usage: matchingEntry?.usage,
 			status,
+			cacheKey: options?.cacheKey ?? matchingEntry?.cacheKey,
 		};
 		writeCache(cache);
 		emitCacheUpdate(provider, cache[provider]);

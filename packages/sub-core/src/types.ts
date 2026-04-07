@@ -29,5 +29,6 @@ export interface Dependencies {
 	// Use static commands/args only (no user-controlled input).
 	execFileSync: (file: string, args: string[], options?: ExecFileSyncOptionsWithStringEncoding) => string;
 	homedir: () => string;
+	getAuthPath: () => string;
 	env: NodeJS.ProcessEnv;
 }

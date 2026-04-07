@@ -2,9 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createUsageController } from "../src/usage/controller.js";
 import { getDefaultSettings } from "../src/settings-types.js";
-import { CACHE_PATH } from "../src/cache.js";
+import { CACHE_PATH, clearCache } from "../src/cache.js";
 import { getStorage, setStorage, type StorageAdapter } from "../src/storage.js";
-import { createDeps, createJsonResponse, getAuthPath } from "./helpers.js";
+import { createDeps, createJsonResponse } from "./helpers.js";
 import type { UsageSnapshot } from "../src/types.js";
 
 function createMemoryStorage(): { storage: StorageAdapter; files: Map<string, string> } {
@@ -49,18 +49,142 @@ test("refresh clears state when provider is not detected", async () => {
 	assert.equal(updates.at(-1)?.provider, undefined);
 });
 
+test("refresh ignores stale cached usage when cache key mismatches current credentials", async () => {
+	const { storage, files } = createMemoryStorage();
+	const originalStorage = getStorage();
+	setStorage(storage);
+
+	try {
+		clearCache();
+		const { deps } = createDeps({
+			env: {
+				OPENAI_CODEX_OAUTH_TOKEN: "new-token",
+				OPENAI_CODEX_ACCOUNT_ID: "acct_new",
+			},
+			fetch: async () => {
+				throw new Error("fetch should not run when skipFetch is true");
+			},
+		});
+
+		const staleUsage: UsageSnapshot = {
+			provider: "codex",
+			displayName: "Codex Plan",
+			windows: [{ label: "5h", usedPercent: 95 }],
+		};
+		files.set(
+			CACHE_PATH,
+			JSON.stringify({
+				codex: {
+					fetchedAt: Date.now() - 5_000,
+					cacheKey: "codex:account:acct_old",
+					usage: staleUsage,
+					status: { indicator: "none" },
+				},
+			}),
+		);
+
+		const controller = createUsageController(deps);
+		const settings = getDefaultSettings();
+		settings.providers.codex.enabled = "on";
+
+		const state = { providerCycleIndex: 0 };
+		const updates: Array<{ usage?: UsageSnapshot; provider?: string }> = [];
+
+		await controller.refresh(
+			{ model: { provider: "openai-codex" } } as never,
+			settings,
+			state,
+			(update) => updates.push(update),
+			{ allowStaleCache: true, skipFetch: true },
+		);
+
+		assert.equal(state.currentProvider, "codex");
+		assert.equal(state.cachedUsage, undefined);
+		assert.equal(updates.at(-1)?.provider, "codex");
+		assert.equal(updates.at(-1)?.usage, undefined);
+	} finally {
+		setStorage(originalStorage);
+	}
+});
+
+test("refreshStatus ignores stale cached usage when cache key mismatches current credentials", async () => {
+	const { storage, files } = createMemoryStorage();
+	const originalStorage = getStorage();
+	setStorage(storage);
+
+	try {
+		clearCache();
+		let statusFetches = 0;
+		const { deps } = createDeps({
+			env: {
+				OPENAI_CODEX_OAUTH_TOKEN: "new-token",
+				OPENAI_CODEX_ACCOUNT_ID: "acct_new",
+			},
+			fetch: async () => {
+				statusFetches += 1;
+				return createJsonResponse({
+					status: { indicator: "none", description: "All systems operational" },
+					components: [
+						{ id: "01JVCV8YSWZFRSM1G5CVP253SK", name: "Codex", status: "partial_outage" },
+					],
+				});
+			},
+		});
+
+		const staleUsage: UsageSnapshot = {
+			provider: "codex",
+			displayName: "Codex Plan",
+			windows: [{ label: "5h", usedPercent: 90 }],
+		};
+		files.set(
+			CACHE_PATH,
+			JSON.stringify({
+				codex: {
+					fetchedAt: Date.now() - 5_000,
+					statusFetchedAt: Date.now() - 5_000,
+					cacheKey: "codex:account:acct_old",
+					usage: staleUsage,
+					status: { indicator: "none", description: "stale" },
+				},
+			}),
+		);
+
+		const controller = createUsageController(deps);
+		const settings = getDefaultSettings();
+		settings.providers.codex.enabled = "on";
+		settings.providers.codex.fetchStatus = true;
+
+		const state = { providerCycleIndex: 0 };
+		const updates: Array<{ usage?: UsageSnapshot; provider?: string }> = [];
+
+		await controller.refreshStatus(
+			{ model: { provider: "openai-codex" } } as never,
+			settings,
+			state,
+			(update) => updates.push(update),
+			{ allowStaleCache: true },
+		);
+
+		assert.equal(state.currentProvider, "codex");
+		assert.equal(statusFetches, 1);
+		assert.equal(updates.at(-1)?.provider, "codex");
+		assert.equal(updates.at(-1)?.usage, undefined);
+	} finally {
+		setStorage(originalStorage);
+	}
+});
+
 test("refresh falls back to cached usage on fetch error", async () => {
 	const { storage, files } = createMemoryStorage();
 	const originalStorage = getStorage();
 	setStorage(storage);
 
 	try {
-		const home = "/home/test";
-		const { deps, files: depFiles } = createDeps({
+		clearCache();
+		const { deps } = createDeps({
+			env: { GITHUB_TOKEN: "token" },
 			fetch: async () => createJsonResponse({}, { ok: false, status: 500 }),
-			homedir: home,
 		});
-		depFiles.set(getAuthPath(home), JSON.stringify({ "github-copilot": { refresh: "token" } }));
 
 		const cachedUsage: UsageSnapshot = {
 			provider: "copilot",
