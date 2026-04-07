@@ -7,17 +7,38 @@ import { AntigravityProvider } from "../src/providers/impl/antigravity.js";
 import { CodexProvider } from "../src/providers/impl/codex.js";
 import { KiroProvider } from "../src/providers/impl/kiro.js";
 import { ZaiProvider } from "../src/providers/impl/zai.js";
-import { createDeps, createJsonResponse, getAuthPath } from "./helpers.js";
+import { createDeps, createJsonResponse } from "./helpers.js";
 import type { UsageSnapshot } from "../src/types.js";
 
-function withAuth(files: Map<string, string>, payload: Record<string, unknown>, home: string): void {
-	files.set(getAuthPath(home), JSON.stringify(payload));
+function withAuth(deps: { getAuthPath: () => string }, files: Map<string, string>, payload: Record<string, unknown>): void {
+	files.set(deps.getAuthPath(), JSON.stringify(payload));
 }
 
 function assertWindow(usage: UsageSnapshot, label: string): void {
 	const found = usage.windows.find((window) => window.label === label);
 	assert.ok(found, `Expected window ${label}`);
 }
+
+test("anthropic reads auth token from active agent directory", async () => {
+	const provider = new AnthropicProvider();
+	let authorization: string | undefined;
+
+	const { deps, files } = createDeps({
+		homedir: "/home/ignored",
+		env: { PI_CODING_AGENT_DIR: "/tmp/pi-sub-custom-agent" },
+		fetch: async (_url, init) => {
+			authorization = (init as any)?.headers?.Authorization;
+			return createJsonResponse({});
+		},
+		execFileSync: () => "",
+	});
+
+	withAuth(deps, files, { anthropic: { access: "agent-dir-token" } });
+	await provider.fetchUsage(deps);
+
+	assert.equal(authorization, "Bearer agent-dir-token");
+	assert.equal(deps.getAuthPath(), "/tmp/pi-sub-custom-agent/auth.json");
+});
 
 test("anthropic reads token from ANTHROPIC_OAUTH_TOKEN env var", async () => {
 	const provider = new AnthropicProvider();
@@ -48,7 +69,7 @@ test("anthropic env token overrides auth.json", async () => {
 		},
 		execFileSync: () => "",
 	});
-	withAuth(files, { anthropic: { access: "file-token" } }, deps.homedir());
+	withAuth(deps, files, { anthropic: { access: "file-token" } });
 
 	await provider.fetchUsage(deps);
 	assert.equal(authorization, "Bearer env-token");
@@ -64,7 +85,7 @@ test("anthropic parses windows and extra usage", async () => {
 		}),
 		execFileSync: () => "",
 	});
-	withAuth(files, { anthropic: { access: "token" } }, deps.homedir());
+	withAuth(deps, files, { anthropic: { access: "token" } });
 
 	const usage = await provider.fetchUsage(deps);
 	assertWindow(usage, "5h");
@@ -169,7 +190,7 @@ test("copilot handles missing quota snapshots", async () => {
 	const { deps, files } = createDeps({
 		fetch: async () => createJsonResponse({}),
 	});
-	withAuth(files, { "github-copilot": { refresh: "token" } }, deps.homedir());
+	withAuth(deps, files, { "github-copilot": { refresh: "token" } });
 
 	const usage = await provider.fetchUsage(deps);
 	assert.equal(usage.windows.length, 0);
@@ -189,7 +210,7 @@ test("copilot parses quotas and requests", async () => {
 			},
 		}),
 	});
-	withAuth(files, { "github-copilot": { refresh: "token" } }, deps.homedir());
+	withAuth(deps, files, { "github-copilot": { refresh: "token" } });
 
 	const usage = await provider.fetchUsage(deps);
 	assertWindow(usage, "Month");
@@ -203,7 +224,7 @@ test("copilot reports http errors", async () => {
 	const { deps, files } = createDeps({
 		fetch: async () => createJsonResponse({}, { ok: false, status: 500 }),
 	});
-	withAuth(files, { "github-copilot": { refresh: "token" } }, deps.homedir());
+	withAuth(deps, files, { "github-copilot": { refresh: "token" } });
 
 	const usage = await provider.fetchUsage(deps);
 	assert.equal(usage.error?.code, "HTTP_ERROR");
@@ -214,7 +235,7 @@ test("gemini handles empty buckets", async () => {
 	const { deps, files } = createDeps({
 		fetch: async () => createJsonResponse({ buckets: [] }),
 	});
-	withAuth(files, { "google-gemini-cli": { access: "token" } }, deps.homedir());
+	withAuth(deps, files, { "google-gemini-cli": { access: "token" } });
 
 	const usage = await provider.fetchUsage(deps);
 	assert.equal(usage.windows.length, 0);
@@ -230,7 +251,7 @@ test("gemini aggregates pro and flash quotas", async () => {
 			],
 		}),
 	});
-	withAuth(files, { "google-gemini-cli": { access: "token" } }, deps.homedir());
+	withAuth(deps, files, { "google-gemini-cli": { access: "token" } });
 
 	const usage = await provider.fetchUsage(deps);
 	assertWindow(usage, "Pro");
@@ -247,7 +268,7 @@ test("antigravity falls back to unknown model labels", async () => {
 			},
 		}),
 	});
-	withAuth(files, { "google-antigravity": { access: "token" } }, deps.homedir());
+	withAuth(deps, files, { "google-antigravity": { access: "token" } });
 
 	const usage = await provider.fetchUsage(deps);
 	assert.ok(usage.windows.some((window) => window.label === "Unknown A"));
@@ -272,7 +293,7 @@ test("codex formats primary and secondary windows", async () => {
 			},
 		}),
 	});
-	withAuth(files, { "openai-codex": { access: "token", accountId: "acct" } }, deps.homedir());
+	withAuth(deps, files, { "openai-codex": { access: "token", accountId: "acct" } });
 
 	const usage = await provider.fetchUsage(deps);
 	assertWindow(usage, "5h");
@@ -309,7 +330,7 @@ test("codex includes additional rate limits for model-specific usage", async () 
 			],
 		}),
 	});
-	withAuth(files, { "openai-codex": { access: "token", accountId: "acct" } }, deps.homedir());
+	withAuth(deps, files, { "openai-codex": { access: "token", accountId: "acct" } });
 
 	const usage = await provider.fetchUsage(deps);
 	assertWindow(usage, "1h");
@@ -354,12 +375,12 @@ test("kiro parses credits when percent is missing", async () => {
 test("zai reports api errors and parses limits", async () => {
 	const provider = new ZaiProvider();
 	const home = "/home/test";
-	const authPath = getAuthPath(home);
 
 	const { deps, files } = createDeps({
 		fetch: async () => createJsonResponse({ success: false, code: 500, msg: "Bad" }),
 		homedir: home,
 	});
+	const authPath = deps.getAuthPath();
 	files.set(authPath, JSON.stringify({ "z-ai": { access: "token" } }));
 	const errorUsage = await provider.fetchUsage(deps);
 	assert.equal(errorUsage.error?.code, "API_ERROR");

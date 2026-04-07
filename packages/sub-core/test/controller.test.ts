@@ -4,7 +4,7 @@ import { createUsageController } from "../src/usage/controller.js";
 import { getDefaultSettings } from "../src/settings-types.js";
 import { CACHE_PATH } from "../src/cache.js";
 import { getStorage, setStorage, type StorageAdapter } from "../src/storage.js";
-import { createDeps, createJsonResponse, getAuthPath } from "./helpers.js";
+import { createDeps, createJsonResponse } from "./helpers.js";
 import type { UsageSnapshot } from "../src/types.js";
 
 function createMemoryStorage(): { storage: StorageAdapter; files: Map<string, string> } {
@@ -60,7 +60,7 @@ test("refresh falls back to cached usage on fetch error", async () => {
 			fetch: async () => createJsonResponse({}, { ok: false, status: 500 }),
 			homedir: home,
 		});
-		depFiles.set(getAuthPath(home), JSON.stringify({ "github-copilot": { refresh: "token" } }));
+		depFiles.set(deps.getAuthPath(), JSON.stringify({ "github-copilot": { refresh: "token" } }));
 
 		const cachedUsage: UsageSnapshot = {
 			provider: "copilot",

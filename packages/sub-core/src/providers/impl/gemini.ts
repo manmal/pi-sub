@@ -23,7 +23,7 @@ function loadGeminiToken(deps: Dependencies): string | undefined {
 	if (envToken) return envToken;
 
 	// Try pi auth.json first
-	const piAuthPath = path.join(deps.homedir(), ".pi", "agent", "auth.json");
+	const piAuthPath = deps.getAuthPath();
 	try {
 		if (deps.fileExists(piAuthPath)) {
 			const data = JSON.parse(deps.readFile(piAuthPath) ?? "{}");

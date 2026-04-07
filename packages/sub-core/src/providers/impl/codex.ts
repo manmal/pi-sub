@@ -44,7 +44,7 @@ function loadCodexCredentials(deps: Dependencies): { accessToken?: string; accou
 	}
 
 	// Try pi's auth.json first
-	const piAuthPath = path.join(deps.homedir(), ".pi", "agent", "auth.json");
+	const piAuthPath = deps.getAuthPath();
 	try {
 		if (deps.fileExists(piAuthPath)) {
 			const data = JSON.parse(deps.readFile(piAuthPath) ?? "{}");

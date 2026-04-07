@@ -2,7 +2,6 @@
  * Anthropic/Claude usage provider
  */
 
-import * as path from "node:path";
 import type { Dependencies, RateWindow, UsageSnapshot } from "../../types.js";
 import { BaseProvider } from "../../provider.js";
 import { noCredentials, fetchFailed, httpError } from "../../errors.js";
@@ -19,7 +18,7 @@ function loadClaudeToken(deps: Dependencies): string | undefined {
 	if (envToken) return envToken;
 
 	// Try pi auth.json next
-	const piAuthPath = path.join(deps.homedir(), ".pi", "agent", "auth.json");
+	const piAuthPath = deps.getAuthPath();
 	try {
 		if (deps.fileExists(piAuthPath)) {
 			const data = JSON.parse(deps.readFile(piAuthPath) ?? "{}");

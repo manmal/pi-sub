@@ -136,7 +136,7 @@ Display Settings cover layout, bars, labels/text, reset timers, status indicator
 
 Credentials are loaded by sub-core from:
 
-- `~/.pi/agent/auth.json` - pi's auth file
+- `auth.json` in your active agent directory (default: `~/.pi/agent/auth.json`) - pi's auth file
 - Provider-specific locations (e.g., `~/.codex/auth.json`, `~/.gemini/oauth_creds.json`)
 - macOS Keychain for Claude Code credentials
 - Environment variables (e.g., `Z_AI_API_KEY`)

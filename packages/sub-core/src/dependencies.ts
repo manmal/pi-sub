@@ -7,6 +7,7 @@ import * as os from "node:os";
 import { execFileSync } from "node:child_process";
 import type { ExecFileSyncOptionsWithStringEncoding } from "node:child_process";
 import type { Dependencies } from "./types.js";
+import { getAuthPath } from "./paths.js";
 
 /**
  * Create default dependencies using Node.js APIs
@@ -32,6 +33,7 @@ export function createDefaultDependencies(): Dependencies {
 			return execFileSync(file, args, options) as string;
 		},
 		homedir: () => os.homedir(),
+		getAuthPath: () => getAuthPath(),
 		env: process.env,
 	};
 }
