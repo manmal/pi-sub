@@ -2,7 +2,15 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import * as path from "node:path";
-import { CACHE_PATH, onCacheSnapshot, onCacheUpdate, readCache, watchCacheUpdates } from "../src/cache.js";
+import {
+	CACHE_PATH,
+	fetchWithCache,
+	getCachedData,
+	onCacheSnapshot,
+	onCacheUpdate,
+	readCache,
+	watchCacheUpdates,
+} from "../src/cache.js";
 import { getCacheLockPath } from "../src/paths.js";
 
 const LOCK_PATH = getCacheLockPath();
@@ -58,6 +66,87 @@ test("readCache recovers from truncated JSON", async () => {
 
 		const repaired = JSON.parse(fs.readFileSync(CACHE_PATH, "utf-8")) as typeof cacheValue;
 		assert.ok(repaired.copilot);
+	});
+});
+
+test("getCachedData returns entry when cache keys match", async () => {
+	const now = Date.now();
+	const entry = {
+		fetchedAt: now,
+		cacheKey: "codex:account:abc",
+		usage: { provider: "codex" as const, displayName: "Codex", windows: [] },
+	};
+	const cache = { codex: entry };
+
+	const result = await getCachedData("codex", 60_000, cache, "codex:account:abc");
+	assert.equal(result, entry);
+});
+
+test("getCachedData rejects entry when cache key mismatches", async () => {
+	const now = Date.now();
+	const cache = {
+		codex: {
+			fetchedAt: now,
+			cacheKey: "codex:account:old",
+			usage: { provider: "codex" as const, displayName: "Codex", windows: [] },
+		},
+	};
+
+	const result = await getCachedData("codex", 60_000, cache, "codex:account:new");
+	assert.equal(result, null);
+});
+
+test("getCachedData rejects legacy no-key entry when expected key exists", async () => {
+	const now = Date.now();
+	const cache = {
+		codex: {
+			fetchedAt: now,
+			usage: { provider: "codex" as const, displayName: "Codex", windows: [] },
+		},
+	};
+
+	const result = await getCachedData("codex", 60_000, cache, "codex:account:abc");
+	assert.equal(result, null);
+});
+
+test("fetchWithCache lock recheck ignores mismatched cache key", async () => {
+	await withCacheFiles(async () => {
+		const now = Date.now();
+		const staleCache = {
+			codex: {
+				fetchedAt: now,
+				cacheKey: "codex:account:old",
+				usage: { provider: "codex", displayName: "Codex", windows: [] },
+			},
+		};
+		fs.writeFileSync(CACHE_PATH, JSON.stringify(staleCache), "utf-8");
+		fs.writeFileSync(LOCK_PATH, String(now), "utf-8");
+
+		setTimeout(() => {
+			if (fs.existsSync(LOCK_PATH)) {
+				fs.unlinkSync(LOCK_PATH);
+			}
+		}, 50);
+
+		let fetchCalls = 0;
+		const result = await fetchWithCache(
+			"codex",
+			60_000,
+			async () => {
+				fetchCalls += 1;
+				return {
+					usage: {
+						provider: "codex" as const,
+						displayName: "Codex",
+						windows: [{ label: "5h", usedPercent: 25 }],
+					},
+				};
+			},
+			{ cacheKey: "codex:account:new" },
+		);
+
+		assert.equal(fetchCalls, 1);
+		assert.equal(result.usage?.windows[0]?.usedPercent, 25);
 	});
 });
 

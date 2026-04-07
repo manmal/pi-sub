@@ -10,8 +10,9 @@ import { isExpectedMissingData } from "../errors.js";
 import { formatElapsedSince } from "../utils.js";
 import { fetchUsageForProvider, refreshStatusForProvider } from "./fetch.js";
 import type { Dependencies } from "../types.js";
-import { getCachedData, readCache } from "../cache.js";
+import { getCachedData, matchesExpectedCacheKey, readCache } from "../cache.js";
 import { hasProviderCredentials } from "../providers/registry.js";
+import { getProviderCacheKey } from "../providers/cache-key.js";
 
 export interface UsageControllerState {
 	currentProvider?: ProviderName;
@@ -85,10 +86,12 @@ export function createUsageController(deps: Dependencies) {
 			state.cachedUsage = undefined;
 		}
 
+		const cacheKey = getProviderCacheKey(provider, deps);
 		const cache = readCache();
-		let cachedEntry = await getCachedData(provider, settings.behavior.refreshInterval * 1000, cache);
+		let cachedEntry = await getCachedData(provider, settings.behavior.refreshInterval * 1000, cache, cacheKey);
 		if (!cachedEntry && options?.allowStaleCache) {
-			cachedEntry = cache[provider] ?? null;
+			const staleEntry = cache[provider];
+			cachedEntry = matchesExpectedCacheKey(staleEntry, cacheKey) ? staleEntry : null;
 		}
 		if (cachedEntry?.usage) {
 			state.cachedUsage = {
@@ -113,10 +116,11 @@ export function createUsageController(deps: Dependencies) {
 			let fallback = state.cachedUsage;
 			let fallbackFetchedAt = state.lastSuccessAt;
 			if (!fallback || fallback.windows.length === 0) {
-				const cachedEntry = cache[provider];
-				const cachedUsage = cachedEntry?.usage ? { ...cachedEntry.usage, status: cachedEntry.status } : undefined;
+				const fallbackEntryRaw = cache[provider];
+				const fallbackEntry = matchesExpectedCacheKey(fallbackEntryRaw, cacheKey) ? fallbackEntryRaw : undefined;
+				const cachedUsage = fallbackEntry?.usage ? { ...fallbackEntry.usage, status: fallbackEntry.status } : undefined;
 				fallback = cachedUsage && cachedUsage.windows.length > 0 ? cachedUsage : undefined;
-				if (cachedEntry?.fetchedAt) fallbackFetchedAt = cachedEntry.fetchedAt;
+				if (fallbackEntry?.fetchedAt) fallbackFetchedAt = fallbackEntry.fetchedAt;
 			}
 			if (fallback && fallback.windows.length > 0) {
 				const lastSuccessAt = fallbackFetchedAt ?? state.lastSuccessAt;
@@ -164,10 +168,12 @@ export function createUsageController(deps: Dependencies) {
 			state.cachedUsage = undefined;
 		}
 
+		const cacheKey = getProviderCacheKey(provider, deps);
 		const cache = readCache();
-		let cachedEntry = await getCachedData(provider, settings.behavior.refreshInterval * 1000, cache);
+		let cachedEntry = await getCachedData(provider, settings.behavior.refreshInterval * 1000, cache, cacheKey);
 		if (!cachedEntry && options?.allowStaleCache) {
-			cachedEntry = cache[provider] ?? null;
+			const staleEntry = cache[provider];
+			cachedEntry = matchesExpectedCacheKey(staleEntry, cacheKey) ? staleEntry : null;
 		}
 		if (cachedEntry?.usage) {
 			state.cachedUsage = {

@@ -4,6 +4,7 @@ import "./prioritize.test.js";
 import "./controller.test.js";
 import "./dependencies.test.js";
 import "./cache.test.js";
+import "./cache-key.test.js";
 import "./lock.test.js";
 import "./status.test.js";
 import "./keybindings.test.js";
