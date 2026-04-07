@@ -33,7 +33,7 @@ export function createDefaultDependencies(): Dependencies {
 			return execFileSync(file, args, options) as string;
 		},
 		homedir: () => os.homedir(),
-		getAuthPath: () => getAuthPath(),
+		getAuthPath,
 		env: process.env,
 	};
 }

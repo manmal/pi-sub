@@ -8,7 +8,7 @@ import { CodexProvider } from "../src/providers/impl/codex.js";
 import { KiroProvider } from "../src/providers/impl/kiro.js";
 import { ZaiProvider } from "../src/providers/impl/zai.js";
 import { createDeps, createJsonResponse } from "./helpers.js";
-import type { UsageSnapshot } from "../src/types.js";
+import type { Dependencies, UsageSnapshot } from "../src/types.js";
 
 function withAuth(deps: { getAuthPath: () => string }, files: Map<string, string>, payload: Record<string, unknown>): void {
 	files.set(deps.getAuthPath(), JSON.stringify(payload));
@@ -38,6 +38,36 @@ test("anthropic reads auth token from active agent directory", async () => {
 
 	assert.equal(authorization, "Bearer agent-dir-token");
 	assert.equal(deps.getAuthPath(), "/tmp/pi-sub-custom-agent/auth.json");
+});
+
+test("providers read auth from active agent directory path", () => {
+	const customAuthPath = "/tmp/pi-sub-custom-agent/auth.json";
+	const providers: Array<{
+		name: string;
+		provider: { hasCredentials: (deps: Dependencies) => boolean };
+		authPayload: Record<string, unknown>;
+	}> = [
+		{ name: "anthropic", provider: new AnthropicProvider(), authPayload: { anthropic: { access: "token" } } },
+		{ name: "copilot", provider: new CopilotProvider(), authPayload: { "github-copilot": { refresh: "token" } } },
+		{ name: "gemini", provider: new GeminiProvider(), authPayload: { "google-gemini-cli": { access: "token" } } },
+		{ name: "antigravity", provider: new AntigravityProvider(), authPayload: { "google-antigravity": { access: "token" } } },
+		{ name: "codex", provider: new CodexProvider(), authPayload: { "openai-codex": { access: "token" } } },
+		{ name: "zai", provider: new ZaiProvider(), authPayload: { "z-ai": { access: "token" } } },
+	];
+
+	for (const { name, provider, authPayload } of providers) {
+		const { deps, files } = createDeps({
+			homedir: "/home/ignored",
+			authPath: customAuthPath,
+			execFileSync: () => {
+				throw new Error("execFileSync not expected in this test");
+			},
+		});
+
+		assert.equal(provider.hasCredentials(deps), false, `${name} should not have credentials before auth.json is present`);
+		withAuth(deps, files, authPayload);
+		assert.equal(provider.hasCredentials(deps), true, `${name} should load credentials from injected auth path`);
+	}
 });
 
 test("anthropic reads token from ANTHROPIC_OAUTH_TOKEN env var", async () => {
